@@ -1,13 +1,12 @@
 import threading
+import nmap
 import socket
 import openpyxl
-import subprocess
 from tkinter import *
 from tkinter import ttk, messagebox
 from openpyxl.styles import Font, PatternFill
 from openpyxl.utils import get_column_letter
 import datetime
-import platform
 
 # Dicionário de unidades
 subredes_unidades = {
@@ -19,28 +18,10 @@ subredes_unidades = {
     "Franco da Rocha": "10.6.0.0/24"
 }
 
-# Configurações para ocultar janela do cmd no Windows
-subprocess_flags = {
-    "startupinfo": None,
-    "creationflags": 0
-}
-
-if platform.system() == "Windows":
-    si = subprocess.STARTUPINFO()
-    si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-    subprocess_flags["startupinfo"] = si
-    subprocess_flags["creationflags"] = subprocess.CREATE_NO_WINDOW
-
 # Função para converter IP em número (para ordenação correta)
 def ip_para_inteiro(ip):
     partes = ip.split('.')
     return int(partes[0]) * 256**3 + int(partes[1]) * 256**2 + int(partes[2]) * 256 + int(partes[3])
-
-# Função para executar nmap de forma silenciosa
-def executar_nmap(hosts, argumentos):
-    comando = ["nmap"] + argumentos.split() + [hosts]
-    resultado = subprocess.run(comando, capture_output=True, text=True, **subprocess_flags)
-    return resultado.stdout
 
 # Função principal que faz o inventário
 def escanear_rede():
@@ -57,61 +38,55 @@ def escanear_rede():
     barra_progresso['value'] = 0
 
     def processo():
+        scanner = nmap.PortScanner()
+        os_scanner = nmap.PortScanner()
         dados = []
 
-        argumentos = '-sn -R'
-        if modo_agressivo:
-            argumentos = '-p 135,139,445,3389,80,443 -T4'
-
         try:
-            resultado = executar_nmap(rede, argumentos)
+            argumentos = '-sn -R'
+            if modo_agressivo:
+                argumentos = '-p 135,139,445,3389,80,443 -T4'
+
+            scanner.scan(hosts=rede, arguments=argumentos)
         except Exception as e:
             messagebox.showerror("Erro", f"Falha na varredura:\n{str(e)}")
             botao_iniciar.config(state=NORMAL)
             return
 
-        linhas = resultado.splitlines()
-        hosts = []
-        ip_atual = None
-
-        for linha in linhas:
-            if "Nmap scan report for" in linha:
-                partes = linha.split(" ")
-                ip_atual = partes[-1]
-                hosts.append(ip_atual)
-
+        hosts = scanner.all_hosts()
         total = len(hosts)
 
         for i, host in enumerate(hosts):
             try:
-                nome_host = ""
-                try:
-                    nome_host = socket.gethostbyaddr(host)[0]
-                except:
-                    nome_host = "Não identificado"
+                if scanner[host].state() == "up":
+                    nome_host = scanner[host].hostname()
+                    if not nome_host:
+                        try:
+                            nome_host = socket.gethostbyaddr(host)[0]
+                        except:
+                            nome_host = "Não identificado"
 
-                mac = "Desconhecido"
-                fabricante = "Desconhecido"
+                    mac = scanner[host]['addresses'].get('mac', 'Desconhecido')
+                    fabricante = scanner[host]['vendor'].get(mac, 'Desconhecido')
 
-                try:
-                    resultado_os = executar_nmap(host, "-O")
-                    for linha_os in resultado_os.splitlines():
-                        if "OS details:" in linha_os:
-                            sistema_operacional = linha_os.split(":", 1)[1].strip()
-                            break
-                    else:
+                    try:
+                        os_result = os_scanner.scan(hosts=host, arguments='-O')
+                        os_info = os_result['scan'].get(host, {}).get('osmatch', [])
+                        if os_info:
+                            sistema_operacional = os_info[0]['name']
+                        else:
+                            sistema_operacional = "Não identificado"
+                    except:
                         sistema_operacional = "Não identificado"
-                except:
-                    sistema_operacional = "Não identificado"
 
-                dados.append({
-                    "IP": host,
-                    "IP_Ordem": ip_para_inteiro(host),
-                    "Nome do Host": nome_host,
-                    "MAC": mac,
-                    "Fabricante": fabricante,
-                    "Sistema Operacional": sistema_operacional
-                })
+                    dados.append({
+                        "IP": host,
+                        "IP_Ordem": ip_para_inteiro(host),
+                        "Nome do Host": nome_host,
+                        "MAC": mac,
+                        "Fabricante": fabricante,
+                        "Sistema Operacional": sistema_operacional
+                    })
             except:
                 continue
 

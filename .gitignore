@@ -1,0 +1,22 @@
+# Arquivos Python compilados
+__pycache__/
+*.py[cod]
+*.so
+
+# Arquivos gerados pelo PyInstaller
+*.spec
+build/
+dist/
+*.exe
+
+# Configurações do VS Code ou Pycharm
+.vscode/
+.idea/
+
+# Arquivos Excel gerados
+*.xlsx
+
+# Arquivos temporários
+*.log
+.DS_Store
+Thumbs.db

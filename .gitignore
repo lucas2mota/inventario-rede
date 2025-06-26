@@ -15,6 +15,7 @@ dist/
 
 # Arquivos Excel gerados
 *.xlsx
+Teste.py
 
 # Arquivos temporários
 *.log
